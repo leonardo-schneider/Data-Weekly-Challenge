@@ -1,0 +1,247 @@
+---
+title: "WEEK 1 CHALLENGE"
+author: "Leonardo Schneider"
+output: html_document
+---
+
+# 📘 Predicting Book Prices – Challenge Week (R)
+
+## 📌 Project Overview
+
+This project is part of my **weekly data challenge** series, where I explore real-world datasets using R, Python, Excel, and Tableau. For this first week, I tackled the challenge "Predict Price of the Books" from MachineHack using **R**.
+
+## 🎯 Objectives
+
+- Clean and transform raw book data
+- Visualize key patterns and relationships between features and price
+- Build regression and Random Forest models to predict book prices
+- Compare real vs. predicted prices visually
+- Evaluate and interpret model performance
+- Export predictions for unseen (test) data
+
+
+# 📥 Data Import and Initial Setup
+
+This section loads necessary packages and reads the training dataset for analysis.
+
+```{r}
+
+library(tidyverse)
+library(readxl)
+
+dados <- read_excel("C:/Users/leona/OneDrive/Área de Trabalho/WEEKLY CHALLENGE/Week1/Data_Test.xlsx")
+dados2 <- read_excel("C:/Users/leona/OneDrive/Área de Trabalho/WEEKLY CHALLENGE/Week1/Data_Train.xlsx")
+
+
+glimpse(dados)
+dados2 <- dados2 %>%
+  mutate(Author_Clean = str_trim(str_split_fixed(Author, ",", 2)[,1]))
+dados2 <- dados2 %>%
+  mutate(Author_ID = as.numeric(as.factor(Author_Clean)))
+
+
+```
+
+
+# 🧹 Data Cleaning and Transformation
+
+Here we clean and transform the dataset: parsing ratings, encoding categorical variables, and preparing the data for modeling.
+
+```{r}
+dados2 <- dados2 %>%
+  mutate(
+    Author_Clean = str_trim (str_split_fixed(Author, ",", 2)[,1]),
+    Author_ID = as.numeric (as.factor(Author_Clean)),
+    Edition_ID = as.numeric (as.factor(Edition)),
+    Genre_ID = as.numeric (as.factor(Genre)),
+    Category_ID = as.numeric(as.factor(BookCategory))
+  )
+```
+
+# 📊 Exploratory Data Analysis (EDA)
+
+We visualize key insights including genre distribution, price vs. rating correlation, top prices, and most frequent authors.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+dados %>%
+  count(Genre, sort = TRUE) %>%
+  top_n(5) %>%
+  ggplot(aes(x = reorder(Genre, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 5 Book Genders", x = "Gender", y = "Quantity")
+
+
+```
+
+
+```{r}
+
+dados2 %>%
+  arrange(desc(Price)) %>%
+  select(Title, Author, Price) %>%
+  head(5)
+
+```
+```{r}
+library(ggplot2)
+library(dplyr)
+
+dados %>%
+  count(Author, sort = TRUE) %>%
+  top_n(5) %>%
+  ggplot(aes(x = reorder(Author, -n), y = n)) +
+  geom_col(fill = "skyblue") +
+  geom_text(aes(label = n), vjust = -0.5, size = 5) +
+  labs(title = "Top 5 Authors with more books", x = "Author", y = "Quantity of books wrote") +
+  theme_minimal()
+
+
+```
+
+
+```{r}
+dados2 <- dados2 %>%
+  mutate(Rating_Num = as.numeric(str_extract(Ratings, "\\d+(\\.\\d+)?")))
+dados2 <- dados2 %>%
+  mutate(Rating_Group = cut(Rating_Num, breaks = c(0, 2, 3, 4, 5), labels = c("0–2", "2–3", "3–4", "4–5")))
+
+ggplot(dados2, aes(x = Rating_Num, y = Price)) +
+  geom_point(alpha = 0.3, color = "forestgreen") +
+  geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 1) +
+  theme_minimal() +
+  labs(title = "Correlation between price and rating", x = "Rating", y = "Price")
+
+
+```
+
+# 🤖 Linear Regression Modeling
+
+This section fits a linear regression model to understand the relationship between predictors and book prices.
+
+```{r}
+modelo <- lm(Price ~ Rating_Num + Genre_ID + Category_ID + Edition_ID + Author_ID, data = dados2)
+summary(modelo)
+
+```
+
+```{r}
+dados2 <- dados2 %>%
+  mutate(Price_log = log1p(Price))  
+
+modelo_log <- lm(Price_log ~ Rating_Num + Genre_ID + Category_ID + Edition_ID, data = dados2)
+summary(modelo_log)
+```
+# Conclusion
+  - Using the Original price, it was possible to see that Rating and Author does not influence on the price. In other hand Genre, Category and Edition are all significant for the price
+  - R-Squared is only 2.76% which indicates that the model does not explains the variance in price very well
+  - The Log Transformed price slightly work better for the model (Why log? Log transformations reduces skewness on data with exponential growth, which is this case)
+
+
+# 🌲 Random Forest Modeling
+
+We apply a Random Forest regression model to improve prediction performance, including log transformation of the price.
+
+```{r}
+library(randomForest)
+
+modelo_rf <- randomForest(Price ~ Rating_Num + Genre_ID + Category_ID + Edition_ID, data = dados2, ntree = 200)
+print(modelo_rf)
+
+```
+- This model performs well with the log transformed prices, which captured the non-linearities and interactions.
+
+```{r}
+dados2$log_Price <- log(dados2$Price)
+modelo_rf <- randomForest(log_Price ~ Rating_Num + Genre_ID + Category_ID + Edition_ID, data = dados2, ntree = 200)
+print(modelo_rf)
+importance(modelo_rf)
+varImpPlot(modelo_rf)
+```
+
+# Conclusion
+  - This numbers represented in the Increased Node Purity showed which variables are the most important in Random Forest.
+  
+  
+# 📈 Predictions and Visualization
+
+Finally, we visualize predictions vs actual prices and export results for further analysis or presentation.
+
+```{r}
+dados2$predicted_log <- predict(modelo_rf)
+dados2$predicted_price <- exp(dados2$predicted_log)
+
+
+
+ggplot(dados2, aes(x = 1:nrow(dados2))) +
+  geom_point(aes(y = Price), color = "red", alpha = 0.4, size = 1.2) +
+  geom_point(aes(y = predicted_price), color = "blue", alpha = 0.4, size = 1.2) +
+  
+  geom_smooth(aes(y = Price), color = "darkred", se = FALSE, linewidth = 1.2) +
+  geom_smooth(aes(y = predicted_price), color = "darkblue", se = FALSE, linewidth = 1.2) +
+  
+  labs(title = "Preço Real (vermelho) vs Preço Previsto (azul)",
+       x = "Observações", y = "Preço") +
+  theme_minimal()
+
+
+
+
+```
+
+# Conclusion 
+  - In the first plot, we visualized actual prices (in red) versus predicted prices (in blue) from the training data. The inclusion of smoothed trend lines for both helps to clarify that the predicted values follow a very similar pattern to the real prices, especially after applying a logarithmic transformation to the target (log(Price)), which stabilized variance and improved model accuracy.
+
+  - This suggests that the model was able to capture the underlying trends in the data, even if some individual predictions deviate (as expected in real-world data).
+
+```{r}
+dados <- dados %>%
+  mutate(
+    Rating_Num = as.numeric(str_extract(Ratings, "\\d+(\\.\\d+)?")),
+    Genre_ID = as.numeric(as.factor(Genre)),
+    Category_ID = as.numeric(as.factor(BookCategory)),
+    Edition_ID = as.numeric(as.factor(Edition)),
+    Author_Clean = str_trim(str_split_fixed(Author, ",", 2)[,1]),
+    Author_ID = as.numeric(as.factor(Author_Clean))
+  )
+
+dados$predicted_log <- predict(modelo_rf, newdata = dados)
+dados$predicted_price <- exp(dados$predicted_log)
+
+
+write.csv(dados %>% select(Title, Author, predicted_price),
+          "Previsoes_TestSet.csv", row.names = FALSE)
+
+
+```
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+
+densidade <- bind_rows(
+  dados2 %>% select(Preco = Price) %>% mutate(Origem = "Treino"),
+  dados %>% select(Preco = predicted_price) %>% mutate(Origem = "Teste")
+)
+
+ggplot(densidade, aes(x = Preco, fill = Origem)) +
+  geom_density(alpha = 0.4) +
+  scale_fill_manual(values = c("Treino" = "red", "Teste" = "blue")) +
+  labs(title = "Distribuição: Preço Real (Treino) vs Preço Previsto (Teste)",
+       x = "Preço", y = "Densidade", fill = "Conjunto") +
+  theme_minimal()
+
+
+```
+
+
+# Conclusion
+
+  - The fact that both curves have a similar shape and spread is a strong indicator that the model generalized well — meaning it didn’t just memorize the training data, but learned patterns that can be applied to unseen books. 
+
