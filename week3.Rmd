@@ -1,0 +1,376 @@
+---
+title: "Challenge Week3"
+output: html_document
+date: "2025-06-23"
+---
+
+#CONCLUSION
+### So, shocker: the most rented listings are entire homes/apartments and private rooms. Together, they make up 98% of rentals in both NYC and Barcelona — meaning shared rooms and other "adventurous" options are basically ghosted.
+
+When it comes to ratings influencing price? In New York, apparently not — guests seem to pay the same whether the place is sparkling or slightly suspicious. In Barcelona, there’s a tiny difference, but let’s not pretend it’s game-changing.
+
+Now let’s talk about price per bed. You’d think more beds would equal better deals per person, right? Well, not really. Price stays pretty stable, except for some outliers that clearly think their couch is made of gold.
+
+However, if you're looking for overpriced solitude, we found the sweet spot: fewer people means higher prices. Yep, price per person increases as capacity decreases.
+
+Cleanliness ratings? Everyone's clean — or everyone’s lying. Either way, all room types hover around the same number, so at least we’ve got that consistency going for us.
+
+Superhosts? Only 1 in 5 listings are run by them. So if you’re not booking with one, statistically you’re just like everyone else.
+
+And the grand finale: price per person. New York charges around $86, while Barcelona sits at a much friendlier $47.6. So if you're paying more than that… maybe scroll a bit more before clicking “Reserve.”
+
+
+```{r}
+library (tidyverse)
+library(readxl)
+
+
+dadosNY <- read_csv("C:/Users/leona/Desktop/Desktop/Área de Trabalho/WEEKLY CHALLENGE/Week3/NewYork.csv")
+dadosBarcelona <- read_csv("C:/Users/leona/Desktop/Desktop/Área de Trabalho/WEEKLY CHALLENGE/Week3/Barcelona.csv")
+
+glimpse(dadosNY)
+glimpse(dadosBarcelona)
+
+```
+
+```{r}
+library(dplyr)
+dadosBarcelona <- dadosBarcelona %>% select(
+  -listing_url,-scrape_id,-last_scraped,-source,-name,-description,-neighborhood_overview, -picture_url, -host_url, - host_about, -host_thumbnail_url,
+  -host_picture_url, -host_neighbourhood, -host_verifications, -host_has_profile_pic, -bathrooms_text, -calendar_updated,
+  -calendar_last_scraped, -number_of_reviews_ltm, -number_of_reviews_l30d, -license, -amenities, -host_acceptance_rate)
+
+dadosNY <- dadosNY %>% select(
+  -listing_url,-scrape_id,-last_scraped,-source,-name,-description,-neighborhood_overview, -picture_url, -host_url, - host_about, -host_thumbnail_url,
+  -host_picture_url, -host_neighbourhood, -host_verifications, -host_has_profile_pic, -bathrooms_text, -calendar_updated,
+  -calendar_last_scraped, -number_of_reviews_ltm, -number_of_reviews_l30d, -license, -amenities, -host_acceptance_rate)
+
+
+
+```
+
+#Property type in Barcelona
+
+```{r}
+
+
+library(dplyr)
+library(ggplot2)
+
+room_counts <- dadosBarcelona %>%
+  count(room_type) %>%
+  mutate(perc=n / sum(n) * 100)
+
+ggplot(room_counts, aes(x = reorder(room_type, perc), y = perc)) +
+  geom_col(fill = "skyblue") +
+  geom_text(aes(label = paste0(round(perc, 1), "%")), vjust = -0.5) +
+  labs(x = "Room Type", y = "Percentage (%)") +
+  theme_minimal()
+
+
+
+
+
+```
+#Property type in New York
+
+
+```{r}
+
+library(dplyr)
+library(ggplot2)
+
+room_counts <- dadosNY %>%
+  count(room_type) %>%
+  mutate(perc=n / sum(n) * 100)
+
+ggplot(room_counts, aes(x = reorder(room_type, perc), y = perc)) +
+  geom_col(fill = "skyblue") +
+  geom_text(aes(label = paste0(round(perc, 1), "%")), vjust = -0.5) +
+  labs(x = "Room Type", y = "Percentage (%)") +
+  theme_minimal()
+
+```
+
+
+```{r}
+dadosBarcelona$city <- "Barcelona"
+dadosNY$city <- "New York"
+
+```
+
+
+```{r}
+df_dadosBoth <- rbind(dadosBarcelona, dadosNY)
+```
+
+#Price per room in Barcelona vs New York
+
+```{r}
+library(dplyr)
+
+df_dadosBoth$price <- as.numeric(gsub("[$€,]", "", df_dadosBoth$price))
+
+
+price_comparison <- df_dadosBoth %>%
+  filter(!is.na(price), !is.na(accommodates), accommodates > 0) %>%
+  mutate(price_per_room = price / accommodates) %>%
+  group_by(city, room_type) %>%
+  summarise(
+    mean_price = mean(price, na.rm = TRUE),
+    mean_price_per_room = mean(price_per_room, na.rm = TRUE),
+    count = n()
+  ) %>%
+  arrange(desc(mean_price_per_room))
+
+
+print(price_comparison)
+```
+
+
+```{r}
+df_dadosBoth %>%
+  filter(!is.na(review_scores_rating)) %>%
+  mutate(rating_bin = cut(review_scores_rating, breaks = seq(2.5, 5, 0.25))) %>%
+  group_by(city, rating_bin) %>%
+  summarise(mean_price = mean(price, na.rm = TRUE)) %>%
+  ggplot(aes(x = rating_bin, y = mean_price, fill = city)) +
+  geom_col(position = "dodge") +
+  labs(title = "Mean price by rating",
+       x = "Rating", y = "Mean Price") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r}
+
+dadosBarcelona <- dadosBarcelona %>%
+  mutate(
+    price = as.numeric(gsub("[$,]", "", price)),
+    price_per_person = price / accommodates
+  )
+
+
+dadosBarcelona %>%
+  filter(beds <= 10) %>%
+  ggplot(aes(x = as.factor(beds), y = price_per_person)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Preço per person vs Number of beds",
+    x = "Number of beds",
+    y = "Price per person (USD)"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+dadosBarcelona %>%
+  filter(accommodates <= 10, price_per_person <= 500) %>%
+  ggplot(aes(x = as.factor(accommodates), y = price_per_person)) +
+  geom_boxplot(fill = "salmon") +
+  facet_wrap(~ room_type) +
+  labs(
+    title = "Price per person vs room capacity",
+    x = "Capacity",
+    y = "Price per person (USD)"
+  ) +
+  theme_minimal()
+```
+
+
+
+
+```{r}
+dadosBarcelona %>%
+  group_by(room_type) %>%
+  summarise(
+    avg_cleanliness = mean(review_scores_cleanliness, na.rm = TRUE),
+    count = n()
+  ) %>%
+  ggplot(aes(x = reorder(room_type, -avg_cleanliness), y = avg_cleanliness)) +
+  geom_col(fill = "lightgreen") +
+  geom_text(
+    aes(label = round(avg_cleanliness, 2)),   
+    vjust = -0.3,                            
+    size = 4
+  ) +
+  labs(
+    title = "Mean score by room cleanliness in Barcelona",
+    x = "Type of room",
+    y = "Cleanliness score (0-5)"
+  ) +
+  ylim(0, 5.5) +  
+  theme_minimal()
+
+
+```
+
+
+```{r}
+dadosNY %>%
+  group_by(room_type) %>%
+  summarise(
+    avg_cleanliness = mean(review_scores_cleanliness, na.rm = TRUE),
+    count = n()
+  ) %>%
+  ggplot(aes(x = reorder(room_type, -avg_cleanliness), y = avg_cleanliness)) +
+  geom_col(fill = "lightgreen") +
+  geom_text(
+    aes(label = round(avg_cleanliness, 2)),   
+    vjust = -0.3,                             
+    size = 4
+  ) +
+  labs(
+    title = "Mean score by room cleanliness in NY",
+    x = "Type of room",
+    y = "Cleanliness score (0-5)"
+  ) +
+  ylim(0, 5.5) +  
+  theme_minimal()
+
+```
+
+
+
+```{r}
+is_super_host <- df_dadosBoth %>%
+  filter(!is.na(host_is_superhost))%>%
+  count(host_is_superhost)%>%
+  mutate(
+    percent = round(n / sum(n) *100)
+  )
+
+library(ggplot2)
+
+ggplot(is_super_host, aes(x = host_is_superhost, y = percent, fill = host_is_superhost)) +
+  geom_col() +
+  geom_text(aes(label = paste0(percent, "%")), vjust = -0.5) +
+  labs(
+    title = "Proportion of Superhosts",
+    x = "Superhost Status",
+    y = "Percentage"
+  ) +
+  theme_minimal()
+
+```
+
+
+```{r}
+df_dadosBoth %>%
+  count(property_type) %>%
+  filter(n > 100) %>% # ou top_n(10)
+  ggplot(aes(x = reorder(property_type, n), y = n)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Most common properties", x = "", y = "Number of properties")
+
+```
+
+
+```{r}
+
+df_dadosBoth <- df_dadosBoth %>%
+  mutate(
+    price = as.numeric(gsub("[$,]", "", price)),
+    price_per_person = price / accommodates
+  )
+df_dadosBoth %>%
+  filter(!is.na(price_per_person)) %>%
+  mutate(
+    superhost = ifelse(host_is_superhost, "Superhost", "Not Superhost")
+  ) %>%
+  ggplot(aes(x = superhost, y = price_per_person)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Price per person with different hosts",
+    x = "Host is Superhost?",
+    y = "Price per person (USD)"
+  ) +
+  theme_minimal()
+
+```
+
+
+```{r}
+df_dadosBoth %>%
+  filter(!is.na(host_since) & !is.na(price_per_person)) %>%
+  mutate(
+    anos_na_plataforma = as.numeric(difftime(Sys.Date(), host_since, units = "days")) / 365
+  ) %>%
+  ggplot(aes(x = anos_na_plataforma, y = price_per_person)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkred") +
+  scale_x_continuous(
+    breaks = seq(0, 20, 1)  
+  ) +
+  labs(
+    title = "Time in the app vs price per person",
+    x = "Years in the app",
+    y = "Price per person (USD)"
+  ) +
+  theme_minimal()
+
+
+```
+
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+
+mean_labels <- df_dadosBoth %>%
+  group_by(city) %>%
+  summarise(mean_price = mean(price_per_person, na.rm = TRUE))
+
+
+ggplot(df_dadosBoth, aes(x = city, y = price_per_person, fill = city)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  coord_cartesian(ylim = c(0, 200)) +
+  geom_text(data = mean_labels, aes(x = city, y = mean_price + 10, label = round(mean_price, 1)),
+            inherit.aes = FALSE, fontface = "bold", color = "black") +
+  labs(
+    title = "Price per person: Barcelona vs Nova York",
+    y = "Price per person (USD)",
+    x = "City"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+library(ggplot2)
+
+library(dplyr)
+
+top_hosts <- df_dadosBoth %>%
+  count(host_id, sort = TRUE) %>%
+  slice_max(n, n = 10)
+
+print(top_hosts)
+
+
+top_hosts %>%
+  ggplot(aes(x = reorder(host_id, n), y = n)) +
+  geom_col(fill = "darkred") +
+  geom_text(aes(label = n), vjust = -0.3, size = 3) +
+  labs(
+    title = "Top 10 Hosts com Mais Imóveis",
+    x = "Host ID",
+    y = "Número de Imóveis"
+  ) +
+  theme_minimal() +
+  coord_flip()  # Inverte o eixo para facilitar a leitura
+
+
+```
+```{r}
+write.csv(df_dadosBoth, "airbnb_geo_tableau.csv", row.names = FALSE)
+```
+
